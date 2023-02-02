@@ -1,33 +1,19 @@
-"""
-    - trianing function
-    - any errors check below github
-      https://github.com/abhishekkrthakur/bert-sentiment
-"""
-
-import torch
-import pandas as pd
-import numpy as np
-import torch.nn as nn
-from sklearn import model_selection
-from sklearn import metrics
-from transformers import AdamW
-from transformers import get_linear_schedule_with_warmup
-
-#user-defined
 import config
 import dataset
 import engine
-from model import BERTBaseUncased
-import os
-os.chdir('D:/Utham/kaggle/bert_sentiment_prediction/')
+import torch
+import pandas as pd
+import torch.nn as nn
+import numpy as np
 
+from model import BERTBaseUncased
+from sklearn import model_selection
+from transformers import AdamW
+from transformers import get_linear_schedule_with_warmup
 
 def run():
-    dfx = pd.read_csv(config.TRAINING_FILE).fillna("none")
-    dfx.sentiment = dfx.sentiment.apply(
-        lambda x: 1 if x == "positive" else 0
-    )
-
+    dfx = pd.read_csv(config.TRAINING_FILE , nrows=1000).dropna().reset_index(drop=True)
+    
     df_train, df_valid = model_selection.train_test_split(
         dfx,
         test_size=0.1,
@@ -38,9 +24,10 @@ def run():
     df_train = df_train.reset_index(drop=True)
     df_valid = df_valid.reset_index(drop=True)
 
-    train_dataset = dataset.BERTDataset(
-        review=df_train.review.values,
-        target=df_train.sentiment.values
+    train_dataset = dataset.TweetDataset(
+        tweet=df_train.text.values,
+        sentiment=df_train.sentiment.values,
+        selected_text=df_train.selected_text.values
     )
 
     train_data_loader = torch.utils.data.DataLoader(
@@ -50,8 +37,9 @@ def run():
     )
 
     valid_dataset = dataset.BERTDataset(
-        review=df_valid.review.values,
-        target=df_valid.sentiment.values
+        tweet=df_valid.text.values,
+        sentiment=df_valid.sentiment.values,
+        selected_text=df_valid.selected_text.values
     )
 
     valid_data_loader = torch.utils.data.DataLoader(
@@ -81,17 +69,17 @@ def run():
 
     model = nn.DataParallel(model)
 
-    best_accuracy = 0
+    best_jaccard = 0
     for epoch in range(config.EPOCHS):
         engine.train_fn(train_data_loader, model, optimizer, device, scheduler)
-        outputs, targets = engine.eval_fn(valid_data_loader, model, device)
-        outputs = np.array(outputs) >= 0.5
-        accuracy = metrics.accuracy_score(targets, outputs)
-        print(f"Accuracy Score = {accuracy}")
-        if accuracy > best_accuracy:
+        jaccard = engine.eval_fn(valid_data_loader, model, device)
+        #outputs = np.array(outputs) >= 0.5
+        #accuracy = metrics.accuracy_score(targets, outputs)
+        print(f"Jaccard Score = {jaccard}")
+        if jaccard > best_jaccard:
             torch.save(model.state_dict(), config.MODEL_PATH)
-            best_accuracy = accuracy
-
+            best_jaccard = jaccard
+        
 
 if __name__ == "__main__":
     run()
